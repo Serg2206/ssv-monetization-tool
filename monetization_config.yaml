@@ -1,0 +1,28 @@
+
+monetization:
+  strategy: "masked" # "full", "partial", "masked", "hidden"
+  methods:
+    - "affiliate_links" # Ссылки
+    - "sponsorship"     # Спонсорство
+    - "premium_content" # Премиум-контент
+    # - "consultations"   # Консультации (внешняя ссылка)
+  affiliate_links:
+    enabled: false
+    program_id: "" # ID партнёрской программы (если применимо)
+    default_links: {} # Словарь {keyword: affiliate_url}
+  sponsorship:
+    enabled: false
+    disclaimer_template: "Контент частично спонсирован [имя_партнёра]."
+    sponsor_logos_path: "./assets/sponsor_logos/" # Путь к логотипам (если встраивание в превью)
+  premium_content:
+    enabled: false
+    call_to_action: "Узнайте больше в премиум-версии на [ссылка]."
+  content_types:
+    ssv_video_package:
+      inject_description: true
+      inject_thumbnail: false # Осторожно с YouTube!
+      inject_chapters: false  # Скорее нет
+    ssv_book:
+      inject_beginning: true
+      inject_end: true
+      inject_between_chapters: false # Пока нет
