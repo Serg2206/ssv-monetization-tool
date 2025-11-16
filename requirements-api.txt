@@ -1,0 +1,15 @@
+
+# API-specific requirements for SSV Monetization Tool
+
+# Web framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# HTTP client for client library
+requests==2.31.0
+
+# Pydantic for data validation
+pydantic==2.4.2
+
+# CORS middleware
+python-multipart==0.0.6
