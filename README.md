@@ -75,6 +75,7 @@ print(result['description'])
 - 📖 **[Руководство пользователя](docs/USAGE.md)** — детальное описание установки и конфигурации
 - 💻 **[Примеры кода](docs/EXAMPLES.md)** — практические примеры использования
 - 🔌 **[API документация](docs/API.md)** — программный интерфейс для интеграции
+- 🌐 **[Интеграция API](docs/API_INTEGRATION.md)** — интеграция с ssv-web-dashboard
 - 📝 **[Отчёт о реализации](IMPLEMENTATION_REPORT.md)** — история разработки проекта
 
 ---
@@ -151,30 +152,69 @@ ssv-monetization-tool/
 
 ## 🔌 Интеграция с экосистемой SSVproff
 
+### REST API сервер
+
+Запуск API сервера для интеграции с веб-панелью:
+
+```bash
+# Установка зависимостей API
+pip install -r requirements-api.txt
+
+# Запуск сервера
+python api/app.py
+# или
+uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
+```
+
+**Swagger UI**: http://localhost:8000/docs
+
+### Использование клиентской библиотеки
+
+```python
+from client.monetization_client import MonetizationClient
+
+# Создание клиента
+client = MonetizationClient(base_url="http://localhost:8000")
+
+# Применение монетизации
+result = client.monetize_content(
+    content={
+        'id': 'video_001',
+        'title': 'Техника операции',
+        'description': 'Описание...'
+    },
+    strategy='masked'
+)
+
+print(result['result']['description'])
+```
+
 ### Интеграция с ssv-video
 
 ```python
 from ssv_video_generator import VideoPackageGenerator
-from modules.content_injector import inject_monetization_elements
+from client.monetization_client import MonetizationClient
 
 # Создание видеопакета
 video_package = VideoPackageGenerator().create_package(...)
 
-# Применение монетизации
-monetized = inject_monetization_elements(video_package, actions, config)
+# Применение монетизации через API
+monetization_client = MonetizationClient()
+result = monetization_client.monetize_content(video_package, strategy='masked')
 ```
 
 ### Интеграция с ssv-book-generator
 
 ```python
 from book_generator import BookGenerator
-from modules.content_injector import inject_monetization_elements
+from client.monetization_client import MonetizationClient
 
 # Создание книги
 book = BookGenerator().create_book(...)
 
-# Применение монетизации
-monetized_book = inject_monetization_elements(book, actions, config)
+# Применение монетизации через API
+monetization_client = MonetizationClient()
+result = monetization_client.monetize_content(book, strategy='partial')
 ```
 
 ---
