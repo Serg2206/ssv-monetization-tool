@@ -75,6 +75,14 @@ class MonetizeRequest(BaseModel):
     content: ContentInput
     strategy: Optional[str] = Field(None, description="Monetization strategy (full, partial, masked, hidden)")
     methods: Optional[List[str]] = Field(None, description="List of monetization methods to use")
+    content_type: Optional[str] = Field("video", description="Content type: 'video' or 'book'")
+
+class BatchMonetizeRequest(BaseModel):
+    """Модель запроса на пакетную монетизацию (например, глав книги)."""
+    items: List[ContentInput]
+    strategy: Optional[str] = Field(None, description="Monetization strategy (full, partial, masked, hidden)")
+    methods: Optional[List[str]] = Field(None, description="List of monetization methods to use")
+    content_type: Optional[str] = Field("book", description="Content type: 'video' or 'book'")
 
 class MonetizeResponse(BaseModel):
     """Модель ответа на запрос монетизации."""
@@ -82,6 +90,11 @@ class MonetizeResponse(BaseModel):
     result: Dict[str, Any]
     metrics: Optional[Dict[str, Any]] = None
     compliance_warnings: Optional[Dict[str, List[str]]] = None
+
+class BatchMonetizeResponse(BaseModel):
+    """Модель ответа на пакетную монетизацию."""
+    success: bool
+    results: List[MonetizeResponse]
 
 class ComplianceResponse(BaseModel):
     """Модель ответа проверки соответствия."""
@@ -124,64 +137,106 @@ async def health_check():
         "config_loaded": config is not None
     }
 
+def _apply_monetization(
+    content: Dict[str, Any],
+    strategy: Optional[str],
+    methods: Optional[List[str]],
+    content_type: str
+) -> MonetizeResponse:
+    """Применяет монетизацию к одной единице контента (используется одиночным и batch-эндпоинтами)."""
+    if config is None:
+        raise HTTPException(status_code=500, detail="Configuration not loaded")
+
+    # Подготовка конфигурации
+    current_config = config.copy()
+    if strategy:
+        current_config['monetization']['strategy'] = strategy
+    if methods:
+        current_config['monetization']['methods'] = methods
+
+    # Определение действий
+    resolved_strategy = current_config['monetization']['strategy']
+    actions = determine_actions_for_strategy(resolved_strategy, current_config)
+
+    # Применение монетизации
+    result = inject_monetization_elements(content, actions, current_config)
+
+    # Расчёт метрик
+    metrics = calculate_monetization_metrics(result)
+
+    # Проверка соответствия (KDP — для книг, YouTube — для остального контента)
+    compliance_warnings = {}
+    description = result.get('description', '')
+
+    if content_type == "book":
+        kdp_issues = check_amazon_kdp_compliance(description)
+        if kdp_issues:
+            compliance_warnings['amazon_kdp'] = kdp_issues
+    else:
+        youtube_issues = check_youtube_description_compliance(description)
+        if youtube_issues:
+            compliance_warnings['youtube'] = youtube_issues
+
+    general_issues = check_general_compliance(description)
+    if general_issues:
+        compliance_warnings['general'] = general_issues
+
+    logger.info(f"Content {content.get('id')} monetized successfully with strategy {resolved_strategy}")
+
+    return MonetizeResponse(
+        success=True,
+        result=result,
+        metrics=metrics,
+        compliance_warnings=compliance_warnings if compliance_warnings else None
+    )
+
 @app.post("/api/v1/monetize", response_model=MonetizeResponse)
 async def monetize_content(request: MonetizeRequest):
     """
     Применяет монетизацию к контенту.
-    
+
     Args:
         request: Запрос с контентом и параметрами монетизации
-    
+
     Returns:
         Монетизированный контент с метриками
     """
     try:
-        if config is None:
-            raise HTTPException(status_code=500, detail="Configuration not loaded")
-        
-        # Подготовка конфигурации
-        current_config = config.copy()
-        if request.strategy:
-            current_config['monetization']['strategy'] = request.strategy
-        if request.methods:
-            current_config['monetization']['methods'] = request.methods
-        
-        # Преобразование входного контента в словарь
         content = request.content.model_dump()
-        
-        # Определение действий
-        strategy = current_config['monetization']['strategy']
-        actions = determine_actions_for_strategy(strategy, current_config)
-        
-        # Применение монетизации
-        result = inject_monetization_elements(content, actions, current_config)
-        
-        # Расчёт метрик
-        metrics = calculate_monetization_metrics(result)
-        
-        # Проверка соответствия
-        compliance_warnings = {}
-        description = result.get('description', '')
-        
-        youtube_issues = check_youtube_description_compliance(description)
-        if youtube_issues:
-            compliance_warnings['youtube'] = youtube_issues
-        
-        general_issues = check_general_compliance(description)
-        if general_issues:
-            compliance_warnings['general'] = general_issues
-        
-        logger.info(f"Content {content['id']} monetized successfully with strategy {strategy}")
-        
-        return MonetizeResponse(
-            success=True,
-            result=result,
-            metrics=metrics,
-            compliance_warnings=compliance_warnings if compliance_warnings else None
+        return _apply_monetization(
+            content,
+            request.strategy,
+            request.methods,
+            request.content_type or "video"
         )
-    
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error monetizing content: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/monetize/batch", response_model=BatchMonetizeResponse)
+async def monetize_content_batch(request: BatchMonetizeRequest):
+    """
+    Применяет монетизацию к списку единиц контента, например ко всем главам книги.
+
+    Args:
+        request: Запрос со списком контента и параметрами монетизации
+
+    Returns:
+        Список результатов монетизации для каждой единицы контента
+    """
+    try:
+        content_type = request.content_type or "book"
+        results = [
+            _apply_monetization(item.model_dump(), request.strategy, request.methods, content_type)
+            for item in request.items
+        ]
+        return BatchMonetizeResponse(success=True, results=results)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error batch monetizing content: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/v1/compliance/youtube", response_model=ComplianceResponse)
@@ -206,7 +261,7 @@ async def check_youtube_compliance(description: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/v1/compliance/amazon-kdp", response_model=ComplianceResponse)
-async def check_amazon_kdp_compliance(description: str):
+async def check_amazon_kdp_compliance_endpoint(description: str):
     """
     Проверяет описание на соответствие политикам Amazon KDP.
     

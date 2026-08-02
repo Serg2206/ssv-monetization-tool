@@ -6,10 +6,9 @@ from typing import Dict, List, Any
 
 logger = logging.getLogger(__name__)
 
-def generate_unique_affiliate_link(base_link: str, campaign_id: str, content_id: str) -> str:
+def generate_unique_affiliate_link(base_url: str, content_id: str, source: str, medium: str = "description") -> str:
     """Генерирует уникальную партнёрскую ссылку с UTM-метками."""
-    # Реализация генерации ссылки с параметрами
-    unique_link = f"{base_link}?utm_source=ssvproff&utm_campaign={campaign_id}&utm_content={content_id}"
+    unique_link = f"{base_url}?utm_source={source}&utm_medium={medium}&utm_campaign={content_id}"
     logger.info(f"Generated unique link: {unique_link}")
     return unique_link
 

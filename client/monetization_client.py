@@ -64,19 +64,21 @@ class MonetizationClient:
         self,
         content: Dict[str, Any],
         strategy: Optional[str] = None,
-        methods: Optional[List[str]] = None
+        methods: Optional[List[str]] = None,
+        content_type: str = "video"
     ) -> Dict[str, Any]:
         """
         Применяет монетизацию к контенту.
-        
+
         Args:
             content: Словарь с контентом (id, title, description)
             strategy: Стратегия монетизации (опционально)
             methods: Список методов монетизации (опционально)
-        
+            content_type: Тип контента ('video' или 'book')
+
         Returns:
             Словарь с результатом монетизации
-        
+
         Raises:
             requests.RequestException: При ошибке запроса
         """
@@ -84,18 +86,77 @@ class MonetizationClient:
             payload = {
                 "content": content,
                 "strategy": strategy,
-                "methods": methods
+                "methods": methods,
+                "content_type": content_type
             }
-            
+
             response = self.session.post(
                 f"{self.base_url}/api/v1/monetize",
                 json=payload
             )
             response.raise_for_status()
             return response.json()
-        
+
         except requests.RequestException as e:
             logger.error(f"Failed to monetize content: {e}")
+            raise
+
+    def monetize_book(
+        self,
+        content: Dict[str, Any],
+        strategy: Optional[str] = None,
+        methods: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Применяет монетизацию к книге/главе с проверкой соответствия Amazon KDP.
+
+        Args:
+            content: Словарь с контентом книги (id, title, description)
+            strategy: Стратегия монетизации (опционально)
+            methods: Список методов монетизации (опционально)
+
+        Returns:
+            Словарь с результатом монетизации
+        """
+        return self.monetize_content(content, strategy=strategy, methods=methods, content_type="book")
+
+    def monetize_book_batch(
+        self,
+        items: List[Dict[str, Any]],
+        strategy: Optional[str] = None,
+        methods: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Применяет монетизацию к списку глав книги за один запрос.
+
+        Args:
+            items: Список словарей с контентом (id, title, description)
+            strategy: Стратегия монетизации (опционально)
+            methods: Список методов монетизации (опционально)
+
+        Returns:
+            Словарь с результатами монетизации для каждой главы
+
+        Raises:
+            requests.RequestException: При ошибке запроса
+        """
+        try:
+            payload = {
+                "items": items,
+                "strategy": strategy,
+                "methods": methods,
+                "content_type": "book"
+            }
+
+            response = self.session.post(
+                f"{self.base_url}/api/v1/monetize/batch",
+                json=payload
+            )
+            response.raise_for_status()
+            return response.json()
+
+        except requests.RequestException as e:
+            logger.error(f"Failed to batch monetize book content: {e}")
             raise
     
     def check_youtube_compliance(self, description: str) -> Dict[str, Any]:
